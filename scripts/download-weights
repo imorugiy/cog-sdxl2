@@ -3,8 +3,12 @@
 import os
 import sys
 import torch
+
+sys.path.extend(["/IP-Adapter"])
+
 import shutil
 from diffusers import StableDiffusionPipeline
+from ip_adapter.custom_pipelines import StableDiffusionXLCustomPipeline
 
 sys.path.append(".")
 
@@ -14,6 +18,11 @@ if os.path.exists(MODEL_CACHE):
     shutil.rmtree(MODEL_CACHE)
 os.makedirs(MODEL_CACHE, exist_ok=True)
 
-pipe = StableDiffusionPipeline.from_pretrained(MODEL_NAME, cache_dir=MODEL_CACHE)
+# pipe = StableDiffusionPipeline.from_pretrained(MODEL_NAME, cache_dir=MODEL_CACHE)
 
-# pipe.save_pretrained(MODEL_CACHE, safe_serialization=True)
+pipe = StableDiffusionXLCustomPipeline.from_pretrained(
+    MODEL_NAME,
+    torch_dtype=torch.float16,
+    add_watermarker=False,
+    cache_dir=MODEL_CACHE,
+)
