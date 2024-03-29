@@ -2,18 +2,32 @@ import os
 import shutil
 from typing import List
 from cog import BasePredictor, Path, Input
+from insightface.app import FaceAnalysis
 from diffusers.utils import load_image
-from diffusers import DDIMScheduler, StableDiffusionPipeline
+from diffusers import DDIMScheduler, StableDiffusionPipeline, AutoencoderKL
+from ip_adapter.ip_adapter_faceid import IPAdapterFaceID
 import torch
+import cv2
 
-MODEL_NAME = "SG161222/Realistic_Vision_V3.0_VAE"
+MODEL_NAME = "SG161222/Realistic_Vision_V4.0_noVAE"
 MODEL_CACHE = "cache"
 
-FACE_PROMPT = "RAW photo, close up portrait of an African woman, head shot, looking at camera, aged 28, curvy, brown eyes, lips, smile, long hair"
+VAE_NAME = "stabilityai/sd-vae-ft-mse"
+VAE_CACHE = "vae-cache"
+
+IP_CACHE = "ip-cache"
+ip_ckpt = "ip-cache/ip-adapter-faceid_sd15.bin"
+
+FACE_PROMPT = "RAW photo, a woman, african, head shot, looking at camera, 28 years old, curvy, brown eyes, lips, smile, long hair"
 
 
 class Predictor(BasePredictor):
     def setup(self):
+        self.app = FaceAnalysis(
+            name="buffalo_l",
+            providers=["CUDAExecutionProvider", "CPUExecutionProvider"],
+        )
+
         noise_scheduler = DDIMScheduler(
             num_train_timesteps=1000,
             beta_start=0.00085,
@@ -24,13 +38,32 @@ class Predictor(BasePredictor):
             steps_offset=1,
         )
 
-        self.pipe = StableDiffusionPipeline.from_pretrained(
-            MODEL_NAME,
-            scheduler=noise_scheduler,
-            cache_dir=MODEL_CACHE,
+        vae = AutoencoderKL.from_pretrained(VAE_NAME, cache_dir=VAE_CACHE).to(
+            dtype=torch.float16
         )
 
-        self.pipe.to("cuda")
+        face_pipe = StableDiffusionPipeline.from_pretrained(
+            MODEL_NAME,
+            torch_dtype=torch.float16,
+            scheduler=noise_scheduler,
+            vae=vae,
+            feature_extractor=None,
+            safety_checker=None,
+            cache_dir=MODEL_CACHE,
+        )
+        self.face_pipe = face_pipe.to("cuda")
+
+        pipe = StableDiffusionPipeline.from_pretrained(
+            MODEL_NAME,
+            torch_dtype=torch.float16,
+            scheduler=noise_scheduler,
+            vae=vae,
+            feature_extractor=None,
+            safety_checker=None,
+            cache_dir=MODEL_CACHE,
+        )
+        self.pipe = pipe.to("cuda")
+        self.ip_model = IPAdapterFaceID(pipe, ip_ckpt, "cuda")
 
     def load_image(self, path):
         shutil.copyfile(path, "/tmp/image.png")
@@ -40,11 +73,11 @@ class Predictor(BasePredictor):
         self,
         prompt: str = Input(
             description="image prompt",
-            default="RAW photo, shot from behind of an African woman, looking at camera, aged 28, curvy, brown eyes, lips, smile, long hair, wearing black dress, within a colorful graffiti alley",
+            default="A photo of a woman, full body shot, wearing black dress, in a colorful graffiti alley, 28 years old, curvy, brown eyes, lips, smile, long hair",
         ),
         negative_prompt: str = Input(
             description="negative image prompt",
-            default="nude, NSFW, topless, cartoon, painting, illustration, (worst quality, low quality, normal qualiti:2)",
+            default="bokeh, monochrome, lowres, bad anatomy, worst quality, low quality, blurry",
         ),
         face_prompt: str = Input(
             description="face image prompt",
@@ -68,10 +101,10 @@ class Predictor(BasePredictor):
 
         if face_image:
             print("face image provided")
-            img0 = self.load_image(face_image)
+            img0 = face_image
         else:
             print("face image not provided, using face prompt to generate head photo")
-            output = self.pipe(
+            output = self.face_pipe(
                 prompt=face_prompt,
                 negative_prompt=negative_prompt,
                 generator=generator,
@@ -85,25 +118,26 @@ class Predictor(BasePredictor):
                 image.save(output_path)
                 output_paths.append(Path(output_path))
 
-            img0 = self.load_image("/tmp/out-0.png")
+            img0 = output_paths[0]
 
-        self.pipe.load_ip_adapter(
-            "h94/IP-Adapter",
-            subfolder="models",
-            weight_name="ip-adapter-plus-face_sd15.bin",
-        )
+        print("Extracting face embeddings: ", img0)
+        self.app.prepare(ctx_id=0, det_size=(512, 512))
+        image = cv2.imread(str(img0))
+        faces = self.app.get(image)
+        faceid_embeds = torch.from_numpy(faces[0].normed_embedding).unsqueeze(0)
 
-        output = self.pipe(
+        images = self.ip_model.generate(
             prompt=prompt,
             negative_prompt=negative_prompt,
-            ip_adapter_image=img0,
+            faceid_embeds=faceid_embeds,
+            num_samples=1,
             width=width,
             height=height,
             num_inference_steps=num_inference_steps,
-            generator=generator,
-        ).images
+            seed=seed,
+        )
 
-        for i, image in enumerate(output):
+        for i, image in enumerate(images):
             output_path = f"/tmp/out-{i+1}.png"
             image.save(output_path)
             output_paths.append(Path(output_path))

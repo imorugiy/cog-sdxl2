@@ -4,16 +4,25 @@ import os
 import sys
 import torch
 import shutil
-from diffusers import StableDiffusionPipeline
+from diffusers import StableDiffusionPipeline, AutoencoderKL
 
 sys.path.append(".")
 
-from predict import MODEL_NAME, MODEL_CACHE
+from predict import MODEL_NAME, MODEL_CACHE, IP_CACHE, VAE_NAME, VAE_CACHE
 
-if os.path.exists(MODEL_CACHE):
-    shutil.rmtree(MODEL_CACHE)
-os.makedirs(MODEL_CACHE, exist_ok=True)
+# if os.path.exists(MODEL_CACHE):
+#     shutil.rmtree(MODEL_CACHE)
+# os.makedirs(MODEL_CACHE, exist_ok=True)
+# pipe = StableDiffusionPipeline.from_pretrained(MODEL_NAME, cache_dir=MODEL_CACHE)
 
-pipe = StableDiffusionPipeline.from_pretrained(MODEL_NAME, cache_dir=MODEL_CACHE)
 
-# pipe.save_pretrained(MODEL_CACHE, safe_serialization=True)
+# if not os.path.exists("ip-cache/ip-adapter-faceid_sd15.bin"):
+#     os.makedirs(IP_CACHE)
+#     os.system(
+#         f"wget -O ip-cache/ip-adapter-faceid_sd15.bin https://huggingface.co/h94/IP-Adapter-FaceID/resolve/main/ip-adapter-faceid_sd15.bin"
+#     )
+
+# if os.path.exists(VAE_CACHE):
+#     shutil.rmtree(VAE_CACHE)
+# os.makedirs(VAE_CACHE, exist_ok=True)
+# vae = AutoencoderKL.from_pretrained(VAE_NAME, cache_dir=VAE_CACHE)

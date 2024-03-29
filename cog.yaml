@@ -8,5 +8,9 @@ build:
     - "transformers"
     - "safetensors"
     - "accelerate"
+    - "einops"
+    - "insightface"
+    - "onnxruntime-gpu"
+    - "git+https://github.com/tencent-ailab/IP-Adapter.git"
 
 predict: "predict.py:Predictor"
