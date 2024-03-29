@@ -4,3 +4,5 @@ __pycache__
 .cog
 *.png
 sdxl-cache
+ip-cache
+vae-cache

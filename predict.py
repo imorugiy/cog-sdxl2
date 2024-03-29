@@ -4,6 +4,7 @@ import sys
 
 sys.path.extend(["/IP-Adapter"])
 
+import cv2
 from typing import List
 from PIL import Image
 from cog import BasePredictor, Path, Input
@@ -13,7 +14,7 @@ from ip_adapter import IPAdapterPlusXL
 from ip_adapter.custom_pipelines import StableDiffusionXLCustomPipeline
 import torch
 
-MODEL_NAME = "stabilityai/stable-diffusion-xl-base-1.0"
+MODEL_NAME = "SG161222/RealVisXL_V3.0"
 MODEL_CACHE = "sdxl-cache"
 
 image_encoder_path = "/IP-Adapter/models/image_encoder/"
@@ -25,11 +26,26 @@ FACE_PROMPT = "RAW photo, close up portrait of an African woman, head shot, look
 
 class Predictor(BasePredictor):
     def setup(self):
+        noise_scheduler = DDIMScheduler(
+            num_train_timesteps=1000,
+            beta_start=0.00085,
+            beta_end=0.012,
+            beta_schedule="scaled_linear",
+            clip_sample=False,
+            set_alpha_to_one=False,
+            steps_offset=1,
+        )
+
         self.pipe = StableDiffusionXLCustomPipeline.from_pretrained(
             MODEL_NAME,
             torch_dtype=torch.float16,
+            scheduler=noise_scheduler,
             add_watermarker=False,
             cache_dir=MODEL_CACHE,
+        )
+
+        self.ip_model = IPAdapterPlusXL(
+            self.pipe, image_encoder_path, ip_ckpt, device, num_tokens=16
         )
 
     def load_image(self, path):
@@ -40,11 +56,11 @@ class Predictor(BasePredictor):
         self,
         prompt: str = Input(
             description="image prompt",
-            default="RAW photo, shot from behind of an African woman, looking at camera, aged 28, curvy, brown eyes, lips, smile, long hair, wearing black dress, within a colorful graffiti alley",
+            default="A photo, an african woman, full body shot, wearing black dress, within a colorful graffiti alley, looking at camera, aged 28, curvy, brown eyes, lips, smile, long hair",
         ),
         negative_prompt: str = Input(
             description="negative image prompt",
-            default="nude, NSFW, topless, cartoon, painting, illustration, (worst quality, low quality, normal qualiti:2)",
+            default="nude, NSFW, topless, (worst quality, low quality, illustration, 3d, 2d, painting, cartoons, sketch), open mouth",
         ),
         face_prompt: str = Input(
             description="face image prompt",
@@ -70,13 +86,9 @@ class Predictor(BasePredictor):
             seed = int.from_bytes(os.urandom(2), byteorder="big")
 
         image = Image.open(face_image)
-        image.resize((512, 512))
+        image.resize((224, 224))
 
-        ip_model = IPAdapterPlusXL(
-            self.pipe, image_encoder_path, ip_ckpt, device, num_tokens=16
-        )
-
-        images = ip_model.generate(
+        images = self.ip_model.generate(
             pil_image=image,
             num_samples=1,
             seed=seed,

@@ -8,6 +8,7 @@ build:
     - "transformers"
     - "safetensors"
     - "accelerate"
+    - "insightface"
     - "einops"
     - "git+https://github.com/tencent-ailab/IP-Adapter.git"
 
