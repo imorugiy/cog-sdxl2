@@ -1,3 +1,10 @@
 .gitignore
 __pycache__
 venv
+cache
+vae-cache
+sd15.png
+sdxl.png
+sdxl1.png
+sdxl2.png
+face.png

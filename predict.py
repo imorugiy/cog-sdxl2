@@ -5,19 +5,25 @@ import sys
 sys.path.extend(["/IP-Adapter"])
 
 import cv2
+from insightface.app import FaceAnalysis
+from insightface.utils import face_align
 from typing import List
 from PIL import Image
 from cog import BasePredictor, Path, Input
 from diffusers.utils import load_image
-from diffusers import DDIMScheduler, StableDiffusionPipeline
+from diffusers import DDIMScheduler, StableDiffusionPipeline, StableDiffusionXLPipeline
 from ip_adapter import IPAdapterPlusXL
+from ip_adapter.ip_adapter_faceid import IPAdapterFaceIDXL, IPAdapterFaceIDPlusXL
 from ip_adapter.custom_pipelines import StableDiffusionXLCustomPipeline
 import torch
 
 MODEL_NAME = "SG161222/RealVisXL_V3.0"
 MODEL_CACHE = "sdxl-cache"
 
+IP_CACHE = "ip-cache"
+
 image_encoder_path = "/IP-Adapter/models/image_encoder/"
+ip_ckpt_face_id = "ip-cache/ip-adapter-faceid_sdxl.bin"
 ip_ckpt = "/IP-Adapter/sdxl_models/ip-adapter-plus-face_sdxl_vit-h.bin"
 device = "cuda"
 
@@ -26,6 +32,11 @@ FACE_PROMPT = "RAW photo, close up portrait of an African woman, head shot, look
 
 class Predictor(BasePredictor):
     def setup(self):
+        self.app = FaceAnalysis(
+            name="buffalo_l",
+            providers=["CUDAExecutionProvider", "CPUExecutionProvider"],
+        )
+
         noise_scheduler = DDIMScheduler(
             num_train_timesteps=1000,
             beta_start=0.00085,
@@ -36,7 +47,7 @@ class Predictor(BasePredictor):
             steps_offset=1,
         )
 
-        self.pipe = StableDiffusionXLCustomPipeline.from_pretrained(
+        pipe = StableDiffusionXLPipeline.from_pretrained(
             MODEL_NAME,
             torch_dtype=torch.float16,
             scheduler=noise_scheduler,
@@ -44,9 +55,7 @@ class Predictor(BasePredictor):
             cache_dir=MODEL_CACHE,
         )
 
-        self.ip_model = IPAdapterPlusXL(
-            self.pipe, image_encoder_path, ip_ckpt, device, num_tokens=16
-        )
+        self.pipe = pipe.to(device)
 
     def load_image(self, path):
         shutil.copyfile(path, "/tmp/image.png")
@@ -56,7 +65,7 @@ class Predictor(BasePredictor):
         self,
         prompt: str = Input(
             description="image prompt",
-            default="A photo, an african woman, full body shot, wearing black dress, within a colorful graffiti alley, looking at camera, aged 28, curvy, brown eyes, lips, smile, long hair",
+            default="A photo, an african woman, full body shot, wearing swimming suit, on a sunny beach, looking at camera, aged 28, curvy, brown eyes, lips, smile, long hair",
         ),
         negative_prompt: str = Input(
             description="negative image prompt",
@@ -84,25 +93,48 @@ class Predictor(BasePredictor):
     ) -> List[Path]:
         if seed == 0:
             seed = int.from_bytes(os.urandom(2), byteorder="big")
+        generator = torch.Generator("cuda").manual_seed(seed)
 
-        image = Image.open(face_image)
-        image.resize((224, 224))
+        output_paths = []
+        img0 = face_image
+        if not face_image:
+            print("face image not provided, generating one")
+            output = self.pipe(
+                prompt=face_prompt,
+                negative_prompt=negative_prompt,
+                width=1024,
+                height=1024,
+                generator=generator,
+                num_inference_steps=num_inference_steps,
+            ).images
 
-        images = self.ip_model.generate(
-            pil_image=image,
-            num_samples=1,
-            seed=seed,
+            for i, image in enumerate(output):
+                output_path = f"/tmp/out-{i}.png"
+                image.save(output_path)
+                output_paths.append(Path(output_path))
+
+            img0 = output_paths[0]
+
+        self.app.prepare(ctx_id=0, det_size=(512, 512))
+        image = cv2.imread(str(img0))
+        faces = self.app.get(image)
+        faceid_embeds = torch.from_numpy(faces[0].normed_embedding).unsqueeze(0)
+
+        ip_model = IPAdapterFaceIDXL(self.pipe, ip_ckpt_face_id, device)
+        images = ip_model.generate(
             prompt=prompt,
             negative_prompt=negative_prompt,
+            faceid_embeds=faceid_embeds,
+            num_samples=1,
+            seed=seed,
             width=width,
             height=height,
             num_inference_steps=num_inference_steps,
-            scale=scale,
+            scale=1.0,
         )
 
-        output_paths = []
         for i, image in enumerate(images):
-            output_path = f"/tmp/out-{i}.png"
+            output_path = f"/tmp/out-{i+1}.png"
             image.save(output_path)
             output_paths.append(Path(output_path))
 

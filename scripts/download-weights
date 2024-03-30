@@ -12,17 +12,21 @@ from ip_adapter.custom_pipelines import StableDiffusionXLCustomPipeline
 
 sys.path.append(".")
 
-from predict import MODEL_NAME, MODEL_CACHE
+from predict import MODEL_NAME, MODEL_CACHE, IP_CACHE
 
-if os.path.exists(MODEL_CACHE):
-    shutil.rmtree(MODEL_CACHE)
-os.makedirs(MODEL_CACHE, exist_ok=True)
+# if os.path.exists(MODEL_CACHE):
+#     shutil.rmtree(MODEL_CACHE)
+# os.makedirs(MODEL_CACHE, exist_ok=True)
 
-# pipe = StableDiffusionPipeline.from_pretrained(MODEL_NAME, cache_dir=MODEL_CACHE)
+# pipe = StableDiffusionXLCustomPipeline.from_pretrained(
+#     MODEL_NAME,
+#     torch_dtype=torch.float16,
+#     add_watermarker=False,
+#     cache_dir=MODEL_CACHE,
+# )
 
-pipe = StableDiffusionXLCustomPipeline.from_pretrained(
-    MODEL_NAME,
-    torch_dtype=torch.float16,
-    add_watermarker=False,
-    cache_dir=MODEL_CACHE,
-)
+# if not os.path.exists("ip-cache/ip-adapter-faceid_sdxl.bin"):
+#     os.makedirs(IP_CACHE)
+#     os.system(
+#         f"wget -O ip-cache/ip-adapter-faceid_sdxl.bin https://huggingface.co/h94/IP-Adapter-FaceID/resolve/main/ip-adapter-faceid_sdxl.bin"
+#     )
