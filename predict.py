@@ -23,8 +23,8 @@ MODEL_CACHE = "sdxl-cache"
 IP_CACHE = "ip-cache"
 
 image_encoder_path = "/IP-Adapter/models/image_encoder/"
-ip_ckpt_face_id = "ip-cache/ip-adapter-faceid_sdxl.bin"
 ip_ckpt = "/IP-Adapter/sdxl_models/ip-adapter-plus-face_sdxl_vit-h.bin"
+ip_ckpt_face_id = "ip-cache/ip-adapter-faceid_sdxl.bin"
 device = "cuda"
 
 FACE_PROMPT = "RAW photo, close up portrait of an African woman, head shot, looking at camera, aged 28, curvy, brown eyes, lips, smile, long hair"
